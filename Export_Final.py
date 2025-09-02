@@ -733,6 +733,38 @@ merged_All_Final_Anomalies.columns = ['CompanyCode' , 'Date' , 'Excel' , 'non_sy
 #Save Merged all final as a csv
 merged_All_Final_Anomalies.to_csv(f'''D:\Projects\Export Dashboard\Anomalies\Export_Anomalies_{JalaliDate.today().strftime('%Y%m%d')}.csv''', encoding = 'utf-8-sig')
 
+##############################Sending Emails for real amount ##############################
+
+if not merged_All_Final_Anomalies.empty:
+    payload = json.dumps({
+
+        "token": "P880P2HLA6MO71PWTXTWR",
+        "providerId": 6,
+        "sendType": 0,
+        "email": 'soleimani.yeganeh@golrang.com',
+        "ccRecipients": ['Aghdasifam.Masoud@Golrang.com'],
+        "subject": "Alert: KPI Values Exceeded!",
+        "body": f"موارد زیر مغایرت دارند: \n\n {merged_All_Final_Anomalies.to_html(index=False, border=1, justify='center')}",
+        "fileAttachmentAddress": ""
+    })
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post("https://Esp-api.gig.services/email/saveEmail", headers=headers, data=payload)
+    print(response.status_code, response.text)
+else:
+    payload = json.dumps({
+        "token": "P880P2HLA6MO71PWTXTWR",
+        "providerId": 6,
+        "sendType": 0,
+        "email":'soleimani.yeganeh@golrang.com',
+        "ccRecipients": ['Aghdasifam.Masoud@Golrang.com'], #It should be in []
+        "subject": "Confirmation of Export_RealAmount execution!",
+        "body": "انجام شد",
+        "fileAttachmentAddress": ""
+    })
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post("https://Esp-api.gig.services/email/saveEmail", headers=headers, data=payload)
+    print(response.status_code, response.text)
+
 
 
 ######################### Insert Data to Table ############################
@@ -776,44 +808,43 @@ else:
 
 
 
-    def insert_to_sql(data, servername, Database):
-        ServerName = servername
-        Database = Database
-        conn = pyodbc.connect(""" 
-        Driver={{SQL Server}};
-        server={0};
-        Database={1};
-        Trusted_Connection=yes;
-    """.format(ServerName, Database))
-        cursor = conn.cursor()
+def insert_to_sql(data, servername, Database):
+    ServerName = servername
+    Database = Database
+    conn = pyodbc.connect(""" 
+    Driver={{SQL Server}};
+    server={0};
+    Database={1};
+    Trusted_Connection=yes;
+""".format(ServerName, Database))
+    cursor = conn.cursor()
+# Check if today's date already exists in the database
+    query = "SELECT MAX(TodayDate) AS MaxDate FROM [DataQuality].[Ex].[FactExport]"
+    DataBaseDate = pd.read_sql_query(query, conn)
+    max_date_db = str(DataBaseDate['MaxDate'].values[0])
+    if extracted_dateToday == max_date_db:
+        print("Date already exists in database. Skipping insert.")
+        status = 0
+    else:
+        for index, row in merged_All_Final_Anomalies.iterrows():
+            cursor.execute("""
+                INSERT INTO [DataQuality].[Ex].[FactExport] (
+                           CompanyCode , Date , Excel , non_sys , non_Distribute, ALK , Final_Result , FactExport , Difference , TodayDate)
+                           Values (?,?,?,?,?,?,?,?,?,?)""" , row.CompanyCode ,  row.Date , row.Excel , row.non_sys , row.non_Distribute, row.ALK , row.Final_Result , row.FactExport , row.Difference , row.TodayDate)                        
 
 
-    # Check if today's date already exists in the database
-        query = "SELECT MAX(TodayDate) AS MaxDate FROM [DataQuality].[Ex].[FactExport]"
-        DataBaseDate = pd.read_sql_query(query, conn)
-        max_date_db = str(DataBaseDate['MaxDate'].values[0])
+        conn.commit()
+        print("Data inserted.")
+        status = 1
 
-
-
-        if extracted_dateToday == max_date_db:
-            print("Date already exists in database. Skipping insert.")
-            status = 0
-        else:
-            for index, row in merged_All_Final_Anomalies.iterrows():
-                cursor.execute("""
-                    INSERT INTO [DataQuality].[Ex].[FactExport] (
-                               CompanyCode , Date , Excel , non_sys , non_Distribute, ALK , Final_Result , FactExport , Difference , TodayDate)
-                               Values (?,?,?,?,?,?,?,?,?,?)""" , row.CompanyCode ,  row.Date , row.Excel , row.non_sys , row.non_Distribute, row.ALK , row.Final_Result , row.FactExport , row.Difference , row.TodayDate)                        
-    
-    
-            conn.commit()
-            print("Data inserted.")
-            status = 1
-    
-        cursor.close()
-        return status
+    cursor.close()
+    return status
     
 
 # Call and print result
 status = insert_to_sql(merged_All_Final, '172.31.31.29', 'DataQuality')
 print("Insert status:", status)
+
+
+
+
