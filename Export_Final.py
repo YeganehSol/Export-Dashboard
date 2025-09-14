@@ -7,9 +7,12 @@ import os
 import json
 from Functions import return_jalali_date, user_pyodbc_connection, pyodbc_connection
 from Functions import Node1va2_Username, Node1va2_Password
+import jdatetime
+from datetime import timedelta
+import jdatetime
+
 
 print(Node1va2_Username)
-
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 os.chdir(r'D:\Projects\Export Dashboard')
@@ -96,12 +99,6 @@ FactExcelAggr = FactExcelAggr[FactExcelAggr['Flag_InOut'] == 2]
 
 FactExcelAggr = FactExcelAggr[FactExcelAggr['YearMonth'] >= '140300']
 nonsys = nonsys[nonsys['YearMonth'] >= '140300']
-
-
-
-
-
-# DataQuality Connection
 
 
 
@@ -196,7 +193,36 @@ companies_App_dict = {3: {'CompanyName': 'گلرنگ سیستم', 'ApplicationCo
                     357: {'CompanyName': 'سپید ماکیان', 'ApplicationCode': 11}, 
                     406: {'CompanyName': 'ابیان فارمد', 'ApplicationCode': 1}, 
                     413: {'CompanyName': 'سوئیس رز عراق', 'ApplicationCode': 22}, 
-                    414: {'CompanyName': 'جویا بهنود', 'ApplicationCode': 1}
+                    414: {'CompanyName': 'جویا بهنود', 'ApplicationCode': 1},
+                    ###Companies_JameMali_dict
+                    2: {'CompanyName': 'مجتمع تجاری فرهنگی کوروش', 'ApplicationCode': -1, 'Moein': [611133,611144,641171]},
+                    6: {'CompanyName': 'سرزمین بازی کوروش', 'ApplicationCode': -1, 'Moein': [611131]},
+                    7: {'CompanyName': 'پردیس سینمایی کوروش', 'ApplicationCode': -1, 'Moein': [611131,611132]},
+                    20: {'CompanyName': 'ایراندار', 'ApplicationCode': -1, 'Moein': [611141]},
+                    22: {'CompanyName': 'آرین سلولز صنعت', 'ApplicationCode': -1, 'Moein': [611133,611131]},
+                    30: {'CompanyName': 'مهندسین مشاور افق معادن خاورمیانه', 'ApplicationCode': -1, 'Moein': [611131,641181]},
+                    53: {'CompanyName': 'واسپاری ارزش آفرین گلرنگ (لیزینگ)', 'ApplicationCode': -1, 'Moein': [611162,611163,641153,641154]},
+                    62: {'CompanyName': 'فاران شیمی', 'ApplicationCode': -1, 'Moein': [611141]},
+                    65: {'CompanyName': 'سپهر پلاستیک پدیده', 'ApplicationCode': -1, 'Moein': [611141]},
+                    118: {'CompanyName': 'تارا', 'ApplicationCode': -1, 'Moein': [641131,611131,641158,611111,631111]},
+                    128: {'CompanyName': 'بیمه سامان', 'ApplicationCode': -1, 'Moein': [611131]},
+                    136: {'CompanyName': 'چیکن فامیلی', 'ApplicationCode': -1, 'Moein': [611111,631111]},
+                    145: {'CompanyName': 'سبد گردان کوروش', 'ApplicationCode': -1, 'Moein': [611163]},
+                    162: {'CompanyName': 'کارکیا سورنا', 'ApplicationCode': -1, 'Moein': [611131]},
+                    176: {'CompanyName': 'مریدین روسیه', 'ApplicationCode': -1, 'Moein': [611111,621111,631111]},
+                    186: {'CompanyName': 'خدمات خودرویی سامیا', 'ApplicationCode': -1, 'Moein': [611111,611131,611133,631111,621111,641131]},
+                    187: {'CompanyName': 'مینیمم مارکت', 'ApplicationCode': -1, 'Moein': [611111,621111,631111]},
+                    192: {'CompanyName': 'امین پدیدار', 'ApplicationCode': -1, 'Moein': [611111,611131,621111,631111]},
+                    211: {'CompanyName': 'غذای سالم هستی', 'ApplicationCode': -1, 'Moein': [611111,611131,631111]},
+                    212: {'CompanyName': 'شیرینی و شکلات کوروش', 'ApplicationCode': -1, 'Moein': [611141,621111]},
+                    259: {'CompanyName': 'فاوا فناوری افق', 'ApplicationCode': -1, 'Moein': [611111,611131]},
+                    265: {'CompanyName': 'فروتل', 'ApplicationCode': -1, 'Moein': [611131,621131,631111]},
+                    266: {'CompanyName': 'خوان گستر هستی', 'ApplicationCode': -1, 'Moein': [611111,621111]},
+                    282: {'CompanyName': 'فرا تجارت زردکوه', 'ApplicationCode': -1, 'Moein': [611111]},
+                    288: {'CompanyName': 'آرین تامین آفرین', 'ApplicationCode': -1, 'Moein': [611163,611131]},
+                    336: {'CompanyName': 'نوین پوش هستی', 'ApplicationCode': -1, 'Moein': [611111]},
+                    340: {'CompanyName': 'آی پوش', 'ApplicationCode': -1, 'Moein': [611111,621111,631111]},
+                    353: {'CompanyName': 'غذای ناب کوروش', 'ApplicationCode': -1, 'Moein': [611111]}
                     }
 
 
@@ -733,45 +759,10 @@ merged_All_Final_Anomalies.columns = ['CompanyCode' , 'Date' , 'Excel' , 'non_sy
 #Save Merged all final as a csv
 merged_All_Final_Anomalies.to_csv(f'''D:\Projects\Export Dashboard\Anomalies\Export_Anomalies_{JalaliDate.today().strftime('%Y%m%d')}.csv''', encoding = 'utf-8-sig')
 
-##############################Sending Emails for real amount ##############################
-
-if not merged_All_Final_Anomalies.empty:
-    payload = json.dumps({
-
-        "token": "P880P2HLA6MO71PWTXTWR",
-        "providerId": 6,
-        "sendType": 0,
-        "email": 'soleimani.yeganeh@golrang.com',
-        "ccRecipients": ['Aghdasifam.Masoud@Golrang.com'],
-        "subject": "Alert: KPI Values Exceeded!",
-        "body": f"موارد زیر مغایرت دارند: \n\n {merged_All_Final_Anomalies.to_html(index=False, border=1, justify='center')}",
-        "fileAttachmentAddress": ""
-    })
-    headers = {'Content-Type': 'application/json'}
-    response = requests.post("https://Esp-api.gig.services/email/saveEmail", headers=headers, data=payload)
-    print(response.status_code, response.text)
-else:
-    payload = json.dumps({
-        "token": "P880P2HLA6MO71PWTXTWR",
-        "providerId": 6,
-        "sendType": 0,
-        "email":'soleimani.yeganeh@golrang.com',
-        "ccRecipients": ['Aghdasifam.Masoud@Golrang.com'], #It should be in []
-        "subject": "Confirmation of Export_RealAmount execution!",
-        "body": "انجام شد",
-        "fileAttachmentAddress": ""
-    })
-    headers = {'Content-Type': 'application/json'}
-    response = requests.post("https://Esp-api.gig.services/email/saveEmail", headers=headers, data=payload)
-    print(response.status_code, response.text)
-
 
 
 ######################### Insert Data to Table ############################
 # Find the lastest Date in CSV which saved on folder and Check duplicate dates
-
-
-
 
 import re
 
@@ -846,5 +837,120 @@ status = insert_to_sql(merged_All_Final, '172.31.31.29', 'DataQuality')
 print("Insert status:", status)
 
 
+########################## Calculate Number of days #################################
+
+###### Connection to 172.31.31.29 ########
+execute_connection, execute_cursor = user_pyodbc_connection(
+    server="172.31.31.29",
+    database_name="DataQuality"
+)
+
+Anomalies_rows = []
+
+AnomaliesRows = """
+SELECT TodayDate, CompanyCode, COUNT(*) AS CountOfRows
+FROM [DataQuality].[Ex].[FactExport]
+GROUP BY TodayDate, CompanyCode
+ORDER BY TodayDate
+"""
+
+try:
+    execute_cursor.execute(AnomaliesRows)
+    Anomalies_total_rows = execute_cursor.fetchall()
+    
+    for TodayDate, CompanyCode, CountOfRows in Anomalies_total_rows:
+        Anomalies_rows.append(
+            {
+                "CompanyCode": CompanyCode,
+                "TodayDate": TodayDate,
+                "CountOfRows": CountOfRows
+            }
+        )
+
+except Exception as e:
+    print("Executing query failed:", e)
+
+# Create DataFrame
+Anomalies_df = pd.DataFrame(Anomalies_rows, columns=["CompanyCode", "TodayDate", "CountOfRows"])
+
+# Always good practice to close resources
+execute_cursor.close()
+execute_connection.close()
 
 
+
+
+
+# Function to convert string/int to jdatetime.date
+def str_to_jalali(date_val):
+    date_str = str(date_val)  # Ensure it's a string
+    year = int(date_str[:4])
+    month = int(date_str[4:6])
+    day = int(date_str[6:])
+    return jdatetime.date(year, month, day)
+
+# Apply to the DataFrame column
+Anomalies_df['JalaliDate'] = Anomalies_df['TodayDate'].apply(str_to_jalali)
+
+max_date = Anomalies_df['JalaliDate'].max()
+
+
+today = jdatetime.date.today()
+
+if max_date == today:
+
+    temprow = Anomalies_df[Anomalies_df['JalaliDate'] == max_date]
+    CompanyCodetemp = temprow['CompanyCode'].unique()
+
+
+    yesterday = today - jdatetime.timedelta(days=1)
+    yesterday_2 = today - jdatetime.timedelta(days=2)
+    yesterday_3 = today - jdatetime.timedelta(days=3)
+
+
+
+
+# Create an empty DataFrame before the loop
+count = pd.DataFrame(columns=['CompanyName', 'Sentence'])
+
+# Define mapping between dates and sentences
+date_map = {
+    yesterday_3: 'چهار روز یا بیشتر مغایرت داشته',
+    yesterday_2: 'سه روز مغایرت داشته',
+    yesterday:   'دو روز مغایرت داشته',
+    today:       'امروز مغایرت داشته است'
+}
+
+# Loop through companies
+for CC in CompanyCodetemp:
+    Temp_df = Anomalies_df[Anomalies_df['CompanyCode'] == CC]
+
+    for date_var, sentence in date_map.items():
+        if date_var in Temp_df['JalaliDate'].values:
+            company_name = companies_App_dict[int(CC)]['CompanyName']
+            print(company_name, sentence)
+
+            # Append to count DataFrame
+            tempdict = pd.DataFrame({
+                'CompanyName': [company_name],
+                'Sentence': [sentence]
+            })
+            count = pd.concat([count, tempdict], ignore_index=True)
+
+            break   # stop after first match
+
+
+if not count.empty:
+    payload = json.dumps({
+        "token": "P880P2HLA6MO71PWTXTWR",
+        "providerId": 6,
+        "sendType": 0,
+        "email": 'soleimani.yeganeh@golrang.com',
+        #"ccRecipients": ['Aghdasifam.Masoud@Golrang.com'],
+        "subject": "Alert: KPI Values Exceeded!",
+        "body": f" \n\n {count.to_html(index=False, border=1, justify='center')}",
+        "fileAttachmentAddress": ""
+    })
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post("https://Esp-api.gig.services/email/saveEmail", headers=headers, data=payload)
+    print(response.status_code, response.text)
