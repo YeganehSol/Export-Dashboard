@@ -31,7 +31,7 @@ os.chdir(r'D:\Projects\Export Dashboard')
 
 
 #Reading txt / xlsx Data
-NewExport = pd.read_excel(r'''\\172.31.50.113\Sale & Distribution\NewExport.xlsx''' , sheet_name=  'CurrencyParityRate')
+#NewExport = pd.read_excel(r'''\\172.31.50.113\Sale & Distribution\NewExport.xlsx''' , sheet_name=  'CurrencyParityRate')
 nonsys = pd.read_csv(r'''\\172.31.50.113\Sale & Distribution\NonSysyemiForPowerBI.txt''', sep=',')
 FactExcelAggr = pd.read_excel(r'\\172.31.50.113\Sale & Distribution\FactExcelAggr.xlsx') #FactExcelAggr + Khazane = nonsys
 
@@ -42,7 +42,7 @@ nonsys['NetAmount'] = nonsys['NetAmount']/1000000 #Turn into Toman
 FactExcelAggr['Amount_Net'] = FactExcelAggr['Amount_Net']/1000000 #Turn into Toman
 
 
-
+##############################################
 #Preprocess and maindates
 
 nonsys['MainDate'].astype('str')
@@ -51,9 +51,6 @@ nonsys['MainDate'] = nonsys['MainDate'].astype('str')
 nonsys['YearMonth'] = nonsys['MainDate'].str[:6]
 nonsys['YearMonth']=nonsys['YearMonth'].astype('str')
 
-NewExport['YearMonth'] = NewExport['YearMonth'].astype(str)
-NewExport['YearMonth'] = NewExport['YearMonth'].astype("string")
-NewExport['CurrencyID'] = NewExport['CurrencyID'].astype("string")
 
 
 FactExcelAggr['CurrencyCode'] = FactExcelAggr['CurrencyDesc'].map(CurrencyToCode)
@@ -247,12 +244,56 @@ iframe_df = iframe_df[["CompanyName", "CompanyCode",  "Iframe_Total"]]
 iframe_df_Net = iframe_df[['CompanyName' , 'CompanyCode' , 'Iframe_Total']]
 iframe_df_Net = iframe_df_Net.groupby(by = ['CompanyName'	,'CompanyCode']).sum().reset_index()
 
+###########################################################################
+
+
+CurrencyRate_rows = []
+
+CurrencyRatesql = '''SELECT YearMonth
+      ,CurrencyParityRateDolar
+	  ,b.CurrencyID
+	  ,b.CurrencyName
+  FROM [Qlikview].[dbo].[FactCurrencyRate] a
+  inner join [Qlikview].[dbo].ExportCurrency b
+  on a.CurrencyID = b.CurrencyID'''
 
 
 
+try:
+    execute_cursor.execute(CurrencyRatesql)
+    CurrencyRate_total_rows = execute_cursor.fetchall()
+    
+    for row in CurrencyRate_total_rows:
+            
+        YearMonth, CurrencyParityRateDolar, CurrencyID,CurrencyName = row
+        CurrencyRate_rows.append(
+            {
+                "YearMonth": YearMonth,
+                "CurrencyParityRateDolar": CurrencyParityRateDolar,
+                "CurrencyID" : CurrencyID,
+                "CurrencyName": CurrencyName
+
+            }
+        )
+except Exception as e:
+     print("Executing iframe_sql query failed", e)
+
+CurrencyRate_df = pd.DataFrame(CurrencyRate_rows)
+
+
+
+########PreProccess##########
+
+CurrencyRate_df['YearMonth'] = CurrencyRate_df['YearMonth'].astype(str)
+CurrencyRate_df['YearMonth'] = CurrencyRate_df['YearMonth'].astype("string")
+CurrencyRate_df['CurrencyID'] = CurrencyRate_df['CurrencyID'].astype("string")
+
+
+################################################
 
 whole_final = pd.merge(iframe_df_Net , Total_rows_Net_tot_final ,how = 'outer' , right_on= ['CompanyCode'] , left_on =  ['CompanyCode'])
 whole_final = pd.merge(whole_final , ALK_df ,how = 'outer' , right_on= ['CompanyCode'] , left_on =  ['CompanyCode'])
+
 
 
 whole_final.N_NetAmount = whole_final.N_NetAmount.fillna(0)
@@ -262,11 +303,14 @@ whole_final.ALK_NetAmount = whole_final.ALK_NetAmount.fillna(0)
 
 
 
-#whole_final['Iframe_Total'] = whole_final['Iframe_Total'].astype('int')
-#whole_final['N_NetAmount'] = whole_final['N_NetAmount'].astype('int')
-#whole_final['X_NetAmount'] = whole_final['X_NetAmount'].astype('int')
-#whole_final['O_NetAmount'] = whole_final['O_NetAmount'].astype('int')
-#whole_final['ALK_NetAmount'] = whole_final['ALK_NetAmount'].astype('int')
+
+
+
+
+
+
+
+
 
 
 ################################################################################################
@@ -278,8 +322,8 @@ for col in ['Iframe_Total','N_NetAmount','X_NetAmount','O_NetAmount','ALK_NetAmo
         .replace(r'[^\d\.\-]+', '', regex=True)
         .apply(pd.to_numeric, errors='coerce')
         .fillna(0)
-        .round(0)          # round to nearest integer
-        .astype('Int64')   # safe nullable int
+        .round(0)          
+        .astype('Int64')   
     )
 
 
@@ -390,13 +434,9 @@ try:
 except Exception as e:
      print("Executing iframe_sql query failed", e)
 
+
 Nondistribute_df = pd.DataFrame(Nondistribute_rows)
-
-
 Nondistribute_df = Nondistribute_df[['CompanyCode','SumOfRealAmount', 'YearMonth','CurrencyDesc','InvoceType']]
-
-
-
 
 
 ########################### Data Cleansing ##################################
@@ -409,7 +449,9 @@ Nondistribute_df['CurrencyCode'] = Nondistribute_df.CurrencyDesc.map(CurrencyToC
 
 ########################### Convert Currency to dollar #########################
 
-mergedFactExport=pd.merge(Nondistribute_df, NewExport[['CurrencyParityRateDolar' , 'YearMonth' , 'CurrencyID']] , right_on= ['YearMonth' , 'CurrencyID'] , left_on=['YearMonth' , 'CurrencyCode'] , how = 'left')
+
+
+mergedFactExport=pd.merge(Nondistribute_df, CurrencyRate_df[['CurrencyParityRateDolar' , 'YearMonth' , 'CurrencyID']] , right_on= ['YearMonth' , 'CurrencyID'] , left_on=['YearMonth' , 'CurrencyCode'] , how = 'left')
 mergedFactExport.drop(['CurrencyID'] , axis = 1 , inplace = True)
 
 
@@ -480,15 +522,19 @@ ALK_df_R['CurrencyCode'] = ALK_df_R['CurrencyDesc'].map(CurrencyToCode)
 
 ############################ Preproccessing ################################
 
-merged_FactExcel = pd.merge(FactExcelAggr , NewExport , left_on = ['YearMonth' , 'CurrencyCode'] , right_on = ['YearMonth' , 'CurrencyID'] , how = 'left')
-merged_nonsys = pd.merge(nonsys , NewExport , left_on = ['YearMonth' , 'CurrencyCode'] , right_on = ['YearMonth' , 'CurrencyID'] , how = 'left')
-merged_ALK = pd.merge(ALK_df_R , NewExport[['CurrencyParityRateDolar' ,'YearMonth', 'CurrencyID']] , left_on = ['YearMonth' , 'CurrencyCode'] , right_on = ['YearMonth' , 'CurrencyID'] , how = 'left' )
+merged_FactExcel = pd.merge(FactExcelAggr , CurrencyRate_df , left_on = ['YearMonth' , 'CurrencyCode'] , right_on = ['YearMonth' , 'CurrencyID'] , how = 'left')
+merged_nonsys = pd.merge(nonsys , CurrencyRate_df , left_on = ['YearMonth' , 'CurrencyCode'] , right_on = ['YearMonth' , 'CurrencyID'] , how = 'left')
+merged_ALK = pd.merge(ALK_df_R , CurrencyRate_df[['CurrencyParityRateDolar' ,'YearMonth', 'CurrencyID']] , left_on = ['YearMonth' , 'CurrencyCode'] , right_on = ['YearMonth' , 'CurrencyID'] , how = 'left' )
 
 
-## Check Marjuei
-merged_FactExcel['RealAmount_Dollar'] = merged_FactExcel['CurrencyParityRateDolar'] * merged_FactExcel['RealAmount']
-merged_nonsys['RealAmount_Dollar_sys'] =  merged_nonsys['CurrencyParityRateDolar'] * merged_nonsys['RealAmount']
-merged_ALK['RealAmount_Dollar_ALK'] = merged_ALK['CurrencyParityRateDolar'] * merged_nonsys['RealAmount']
+
+
+
+##Check Marjuei
+
+merged_FactExcel['RealAmount_Dollar'] = merged_FactExcel['CurrencyParityRateDolar'].astype('float') * merged_FactExcel['RealAmount']
+merged_nonsys['RealAmount_Dollar_sys'] =  merged_nonsys['CurrencyParityRateDolar'].astype('float') * merged_nonsys['RealAmount']
+merged_ALK['RealAmount_Dollar_ALK'] = merged_ALK['CurrencyParityRateDolar'].astype('float') * merged_nonsys['RealAmount']
 
 
 
@@ -558,9 +604,8 @@ merged_All_Final_Anomalies.drop(['CurrencyDesc' , 'CurrencyParityRateDolar' , 'A
 from persiantools.jdatetime import JalaliDate
 
 merged_All_Final_Anomalies['TodayDate'] = [JalaliDate.today().strftime('%Y%m%d')] * len(merged_All_Final_Anomalies)
-
-
 merged_All_Final_Anomalies.columns = ['CompanyCode' , 'Date' , 'Excel' , 'non_sys' , 'non_Distribute', 'ALK' , 'Final_Result' , 'FactExport' , 'Difference' , 'TodayDate']
+
 
 #Save Merged all final as a csv
 merged_All_Final_Anomalies.to_csv(f'''D:\Projects\Export Dashboard\Anomalies\Export_Anomalies_{JalaliDate.today().strftime('%Y%m%d')}.csv''', encoding = 'utf-8-sig')
@@ -654,23 +699,37 @@ execute_connection, execute_cursor = user_pyodbc_connection(
 Anomalies_rows = []
 
 AnomaliesRows = """
-SELECT TodayDate, Date, CompanyCode, COUNT(*) AS CountOfRows
-FROM [DataQuality].[Ex].[FactExport]
-GROUP BY TodayDate, CompanyCode ,Date
-ORDER BY TodayDate
+SELECT [Date]
+      ,[CompanyCode]
+      ,[Excel]
+      ,[non_sys]
+      ,[ALK]
+      ,[non_Distribute]
+      ,[Final_Result]
+      ,[FactExport]
+      ,[Difference]
+      ,[TodayDate]
+  FROM [DataQuality].[Ex].[FactExport]
+  where date > 140400
 """
 
 try:
     execute_cursor.execute(AnomaliesRows)
     Anomalies_total_rows = execute_cursor.fetchall()
     
-    for TodayDate,Date,CompanyCode, CountOfRows in Anomalies_total_rows:
+    for  Date ,CompanyCode, Excel,non_sys,ALK,non_Distribute,Final_Result ,FactExport, Difference ,TodayDate in Anomalies_total_rows:
         Anomalies_rows.append(
             {
                 "CompanyCode": CompanyCode,
                 "TodayDate": TodayDate,
                 'Date': Date,
-                "CountOfRows": CountOfRows
+                "Excel": Excel,
+                "Non_System":non_sys,
+                "Alkowsar":ALK,
+                'non_Distribute':non_Distribute,
+                "Final_Result":Final_Result,
+                "FactExport":FactExport,
+                "Difference":Difference
             }
         )
 
@@ -678,7 +737,7 @@ except Exception as e:
     print("Executing query failed:", e)
 
 
-Anomalies_df = pd.DataFrame(Anomalies_rows, columns=["CompanyCode", "TodayDate", "Date","CountOfRows"])
+Anomalies_df = pd.DataFrame(Anomalies_rows, columns=["CompanyCode", "TodayDate", "Date","Excel","Non_System" , "Alkowsar" ,"non_Distribute" , "Final_Result" , "FactExport" , "Difference" ])
 
 
 execute_cursor.close()
@@ -700,16 +759,18 @@ Anomalies_df['TodayJalaliDate'] = Anomalies_df['TodayDate'].apply(str_to_jalali)
 Anomalies_df['TodayJalaliDate'] = Anomalies_df['TodayDate'].apply(str_to_jalali)
 max_date = Anomalies_df['TodayJalaliDate'].max()
 Anomalies_df['DateJalali'] = Anomalies_df['Date'].apply(str_to_jalali)
-max_date_Anomali = Anomalies_df['DateJalali'].max()
-today = jdatetime.date.today().strftime('%Y%m')
-
-
+max_date_Anomali = Anomalies_df['TodayDate'].max()
+today = jdatetime.date.today().strftime('%Y%m%d')
 
 
 
 if today == max_date_Anomali:
-    count = Anomalies_df[Anomalies_df['DateJalali'] == max_date_Anomali]
+    count = Anomalies_df[Anomalies_df['TodayDate'] == max_date_Anomali]
     
+count.drop(['TodayJalaliDate' , 'DateJalali'] , axis = 1 , inplace = True)    
+
+
+
 
 
 if not count.empty:
@@ -740,8 +801,3 @@ else:
     headers = {'Content-Type': 'application/json'}
     response = requests.post("https://Esp-api.gig.services/email/saveEmail", headers=headers, data=payload)
     print(response.status_code, response.text)
-
-
-
-    ############################################################################################################
-
