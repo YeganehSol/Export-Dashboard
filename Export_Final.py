@@ -2,8 +2,6 @@
 #transfer anomlaie to DW 172.31.31.29 and finally it sends emails 
 
 
-
-
 import os
 import pandas as pd
 import numpy as np
@@ -18,6 +16,7 @@ from datetime import timedelta
 import jdatetime
 from Export_Functions import *
 import requests
+from persiantools.jdatetime import JalaliDate
 
 
 
@@ -128,7 +127,7 @@ Nondistribute_rows = []
 NondistributeCompanies_query = """
 select CompanyCode ,  round((SUM(case when InvoceType = 2 then NetAmount else 0 end) - SUM(case when InvoceType = 3 then NetAmount else 0 end))/ 1000000.0, 0) as SumQatE
 from SaleIntegratedModel..FactSaleNonDistribut  where SaleType = 2 and left(maindate , 6) >= 140300
-group by CompanyCode """
+group by CompanyCode"""
 
 
 
@@ -358,18 +357,19 @@ df_anomalies.columns = ['نام شرکت' , 'کد مستر شرکت' , 'اختل
 ################################## Roham's Table ####################################
 
 
+
 FactExport_rows = []
 
 FactExportCompanies_query = """
 SELECT 
     YearMonth,
     CompanyCode,
-    SUM(RealAmount * DollarRate) AS SumInUSD
+    SUM(RealAmount) AS SumInUSD
 FROM [QlikView].[dbo].[FactExport]
-where YearMonth > 140300
+where YearMonth > 140400
 GROUP BY 
     YearMonth, 
-    CompanyCode;"""
+    CompanyCode"""
 
 
 
@@ -378,12 +378,9 @@ try:
     FactExport_total_rows = execute_cursor.fetchall()
     
     for row in FactExport_total_rows:
-        if not row[0]:
-            row[0] = "Null"
-        if not row[1]:
-            row[1] = 0
+
             
-        YearMonth , CompanyCode, SumInUSD = row
+        YearMonth , CompanyCode, SumInUSD  = row
         FactExport_rows.append(
             {
                 "YearMonth":YearMonth,
@@ -396,23 +393,44 @@ except Exception as e:
 
 FactExport_df = pd.DataFrame(FactExport_rows)
 
-FactExport_df = FactExport_df[["YearMonth", "CompanyCode", 'SumInUSD']]
-
+FactExport_df = FactExport_df[["YearMonth", "CompanyCode", 'SumInUSD' ]]
 
 
 #################################################################################################################
+#################################################################################################################
+#################################################################################################################
+#################################################################################################################
 ########################### Gathering RealAmount Data from NonDistribute ########################################
+#################################################################################################################
+#################################################################################################################
+#################################################################################################################
+#################################################################################################################
+
+
 
 Nondistribute_rows = []
 
 NondistributeCompanies_query = """
-select   sum(RealAmount) SumOfRealAmount , CompanyCode , left(MainDate , 6) YearMonth , CurrencyDesc , InvoceType
- from SaleIntegratedModel..FactSaleNonDistribut
-where RealAmount is not null and MainDate >14030000 
-group by CompanyCode ,left(MainDate , 6) , CurrencyDesc ,InvoceType
-"""
-
-
+SELECT  
+    SUM(
+        CASE 
+            WHEN CurrencyDesc like N'%ريال%' THEN NetAmount
+            ELSE RealAmount
+        END
+    ) AS SumOfRealAmount,
+    CompanyCode,
+    LEFT(MainDate, 6) AS YearMonth,
+    CurrencyDesc,
+    InvoceType
+FROM SaleIntegratedModel..FactSaleNonDistribut
+WHERE 
+    RealAmount IS NOT NULL 
+    AND MainDate > 14040000
+GROUP BY 
+    CompanyCode,
+    LEFT(MainDate, 6),
+    CurrencyDesc,
+    InvoceType"""
 
 try:
     execute_cursor.execute(NondistributeCompanies_query)
@@ -420,14 +438,14 @@ try:
 
     for row in Nondistribute_total_rows:
             
-        SumOfRealAmount , CompanyCode ,  YearMonth , CurrencyDesc , InvoceType  = row
+        SumOfRealAmount , CompanyCode ,  YearMonth , CurrencyDesc ,InvoceType  = row
         Nondistribute_rows.append(
             {
                 "CompanyCode": CompanyCode,
                 "SumOfRealAmount": SumOfRealAmount,
                 "YearMonth" :YearMonth,
                 'CurrencyDesc' : CurrencyDesc,
-                "InvoceType" : InvoceType
+				"InvoceType":InvoceType
 
             }
         )
@@ -436,13 +454,15 @@ except Exception as e:
 
 
 Nondistribute_df = pd.DataFrame(Nondistribute_rows)
-Nondistribute_df = Nondistribute_df[['CompanyCode','SumOfRealAmount', 'YearMonth','CurrencyDesc','InvoceType']]
+Nondistribute_df = Nondistribute_df[['CompanyCode','SumOfRealAmount', 'YearMonth','CurrencyDesc' ,'InvoceType']]
 
 
 ########################### Data Cleansing ##################################
 
 Nondistribute_df.CurrencyDesc= Nondistribute_df.CurrencyDesc.str.strip()
 Nondistribute_df['CurrencyCode'] = Nondistribute_df.CurrencyDesc.map(CurrencyToCode)
+
+
 
 
 
@@ -455,13 +475,17 @@ mergedFactExport=pd.merge(Nondistribute_df, CurrencyRate_df[['CurrencyParityRate
 mergedFactExport.drop(['CurrencyID'] , axis = 1 , inplace = True)
 
 
-mergedFactExport['RealAmountDollar'] = mergedFactExport.SumOfRealAmount.astype('float') * mergedFactExport.CurrencyParityRateDolar.astype('float')
+#New
+#RealAmountDollar -> SumOfRealAmount
+#mergedFactExport['RealAmountDollar'] = mergedFactExport.SumOfRealAmount.astype('float') * mergedFactExport.CurrencyParityRateDolar.astype('float')
+mergedFactExport.SumOfRealAmount =mergedFactExport.SumOfRealAmount.astype('int64')
 
-mergedFactExportInv = mergedFactExport.groupby(['YearMonth' ,'CompanyCode' , 'InvoceType']).sum('RealAmountDollar').reset_index()
+#SumOfRealAmount
+mergedFactExportInv = mergedFactExport.groupby(['YearMonth' ,'CompanyCode' , 'InvoceType']).sum('SumOfRealAmount').reset_index()
 
 
 grouped = (
-    mergedFactExportInv.groupby(['YearMonth', 'CompanyCode', 'InvoceType'])['RealAmountDollar']
+    mergedFactExportInv.groupby(['YearMonth', 'CompanyCode', 'InvoceType'])['SumOfRealAmount']
       .sum()
       .unstack(fill_value=0)   # ستون جدا برای 2 و 3
       .reset_index())
@@ -481,7 +505,7 @@ ALK_rows_R = []
 Alk_query_R = """
 select left(maindate , 6) MainDate , CompanyCode , CurrencyDesc ,  round(SUM(case when InvoceType = 2 then RealAmount else 0 end) - SUM(case when InvoceType = 3 then RealAmount else 0 end) , 0) as SumQatE
 from SaleIntegratedModel..factsalealk
-where  left(maindate , 6) >= 140300
+where  left(maindate , 6) >= 140400
 group by MainDate , CompanyCode , CurrencyDesc
 """
 
@@ -529,26 +553,30 @@ merged_ALK = pd.merge(ALK_df_R , CurrencyRate_df[['CurrencyParityRateDolar' ,'Ye
 
 
 
-
-##Check Marjuei
-
 merged_FactExcel['RealAmount_Dollar'] = merged_FactExcel['CurrencyParityRateDolar'].astype('float') * merged_FactExcel['RealAmount']
 merged_nonsys['RealAmount_Dollar_sys'] =  merged_nonsys['CurrencyParityRateDolar'].astype('float') * merged_nonsys['RealAmount']
 merged_ALK['RealAmount_Dollar_ALK'] = merged_ALK['CurrencyParityRateDolar'].astype('float') * merged_nonsys['RealAmount']
 
 
+#New
+merged_ALK['ALK_total'] =merged_ALK['ALK_total'].astype('int64')
+merged_nonsys = merged_nonsys[['CompanyCode' ,'RealAmount' ,  'YearMonth']]
+merged_nonsys.columns = ['CompanyCode' ,'RealAmount_sys' ,  'YearMonth']
+merged_FactExcel = merged_FactExcel[['CompanyCode' ,'RealAmount' ,  'YearMonth']]
+merged_FactExcel.columns = ['CompanyCode' ,'RealAmount_FactExcel' ,  'YearMonth']
 
-merged_All_Temp = pd.merge(merged_FactExcel[['CompanyCode' ,'RealAmount_Dollar' ,  'YearMonth']] , merged_nonsys[['CompanyCode' ,'RealAmount_Dollar_sys' ,  'YearMonth']] , how = 'outer' , left_on = 'CompanyCode' , right_on = 'CompanyCode' )
+
+merged_All_Temp = pd.merge(merged_FactExcel[['CompanyCode' ,'RealAmount_FactExcel' ,  'YearMonth']] , merged_nonsys[['CompanyCode' ,'RealAmount_sys' ,  'YearMonth']] , how = 'outer' , left_on = 'CompanyCode' , right_on = 'CompanyCode' )
 merged_All_Tempp = pd.merge(merged_All_Temp , grouped , right_on = 'CompanyCode' , left_on = 'CompanyCode' , how = 'outer')
 
-
+##########################
 #YearMonth handling 
 
 merged_All_Tempp.YearMonth = merged_All_Tempp.YearMonth.fillna(merged_All_Tempp.YearMonth_y)
 merged_All_Tempp.YearMonth = merged_All_Tempp.YearMonth.fillna(merged_All_Tempp.YearMonth_x)
 
 #Drop Extera Columns
-merged_All_2 = merged_All_Tempp.drop(['YearMonth_x' ,'YearMonth_y' , 2 , 3 ] , axis = 1 )
+merged_All_2 = merged_All_Tempp.drop(['YearMonth_x' ,'YearMonth_y' , 2  ] , axis = 1 )
 
 
 #Merge ALkowsar with main data
@@ -564,21 +592,19 @@ merged_All.rename(columns = {'YearMonth_x' : 'YearMonth'} , inplace = True)
 
 
 
-
-
 ###################### Fill Na ##########################
 
 
 #Merge jameMali and 
 
-merged_All['RealAmount_Dollar'] = merged_All.RealAmount_Dollar.fillna(0)
-merged_All['RealAmount_Dollar_sys'] = merged_All.RealAmount_Dollar_sys.fillna(0)
+merged_All['RealAmount_FactExcel'] = merged_All.RealAmount_FactExcel.fillna(0)
+merged_All['RealAmount_sys'] = merged_All.RealAmount_sys.fillna(0)
 merged_All['RealAmount_nonDis'] = merged_All.RealAmount_nonDis.fillna(0)
 
 
 merged_All = merged_All.groupby(by = ['CompanyCode' , 'YearMonth']).sum().reset_index()
 
-merged_All['RealAmount_Final'] = merged_All['RealAmount_Dollar'] + merged_All['RealAmount_Dollar_sys'] + merged_All['RealAmount_nonDis'] + merged_All['RealAmount_Dollar_ALK']
+merged_All['RealAmount_Final'] = merged_All['RealAmount_FactExcel'] + merged_All['RealAmount_sys'] + merged_All['RealAmount_nonDis'] + merged_All['ALK_total']
 
 
 merged_All_Final = pd.merge(merged_All , FactExport_df , left_on = ['CompanyCode' , 'YearMonth']  , right_on =['CompanyCode' , 'YearMonth'] )
@@ -594,16 +620,14 @@ merged_All_Final_Anomalies = merged_All_Final[merged_All_Final['Difference'] > 1
 
 ######################### Rename Columns in order to insert to table #######################
 
-merged_All_Final_Anomalies.drop(['CurrencyDesc' , 'CurrencyParityRateDolar' , 'ALK_total' , 'CurrencyID' , 'CurrencyCode'] , axis = 1 , inplace = True)
+merged_All_Final_Anomalies.drop(['CurrencyDesc' , 'CurrencyParityRateDolar' , 'RealAmount_Dollar_ALK' , 'CurrencyID' , 'CurrencyCode' , 3]  , axis = 1 , inplace = True)
 
 
 ######################### Add Jalali Date #########################
 
 
-#Add Date
-from persiantools.jdatetime import JalaliDate
-
 merged_All_Final_Anomalies['TodayDate'] = [JalaliDate.today().strftime('%Y%m%d')] * len(merged_All_Final_Anomalies)
+
 merged_All_Final_Anomalies.columns = ['CompanyCode' , 'Date' , 'Excel' , 'non_sys' , 'non_Distribute', 'ALK' , 'Final_Result' , 'FactExport' , 'Difference' , 'TodayDate']
 
 
@@ -763,14 +787,11 @@ max_date_Anomali = Anomalies_df['TodayDate'].max()
 today = jdatetime.date.today().strftime('%Y%m%d')
 
 
-
+count = pd.DataFrame()
 if today == max_date_Anomali:
     count = Anomalies_df[Anomalies_df['TodayDate'] == max_date_Anomali]
+    count.drop(['TodayJalaliDate' , 'DateJalali'] , axis = 1 , inplace = True)
     
-count.drop(['TodayJalaliDate' , 'DateJalali'] , axis = 1 , inplace = True)    
-
-
-
 
 
 if not count.empty:
@@ -779,7 +800,7 @@ if not count.empty:
         "providerId": 6,
         "sendType": 0,
         "email": 'soleimani.yeganeh@golrang.com',
-        "ccRecipients": ['Aghdasifam.Masoud@Golrang.com'],
+        #"ccRecipients": ['Aghdasifam.Masoud@Golrang.com'],
         "subject": "Alert: KPI Values Exceeded In Export!",
         "body": f" \n\n {count.to_html(index=False, border=1, justify='center')}",
         "fileAttachmentAddress": ""
@@ -793,7 +814,7 @@ else:
         "providerId": 6,
         "sendType": 0,
         "email":'soleimani.yeganeh@golrang.com',
-        "ccRecipients": ['Aghdasifam.Masoud@Golrang.com'], #It should be in []
+        #"ccRecipients": ['Aghdasifam.Masoud@Golrang.com'], #It should be in []
         "subject": "Confirmation of Descending program execution in Export!",
         "body": "انجام شد",
         "fileAttachmentAddress": ""
@@ -801,3 +822,4 @@ else:
     headers = {'Content-Type': 'application/json'}
     response = requests.post("https://Esp-api.gig.services/email/saveEmail", headers=headers, data=payload)
     print(response.status_code, response.text)
+
