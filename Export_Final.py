@@ -1,5 +1,6 @@
 #The last Script for export dashboard which gathers data from all sources (Jame'e mali,txt,excel and factsaleiframe) ,
-#transfer anomlaie to DW 172.31.31.29 and finally it sends emails 
+#transfer anomlaie to DW 172.31.31.29 and finally it sends email
+#تمامی ارزها با با هم نوع خودشون جمع میشن و مرجوعی ها از آن ها کم شده و در نهایت با هم جمع میشن و به دلار تبدیل نمیشوند!
 
 
 import os
@@ -280,7 +281,6 @@ except Exception as e:
 CurrencyRate_df = pd.DataFrame(CurrencyRate_rows)
 
 
-
 ########PreProccess##########
 
 CurrencyRate_df['YearMonth'] = CurrencyRate_df['YearMonth'].astype(str)
@@ -304,14 +304,6 @@ whole_final.ALK_NetAmount = whole_final.ALK_NetAmount.fillna(0)
 
 
 
-
-
-
-
-
-
-
-
 ################################################################################################
 
 for col in ['Iframe_Total','N_NetAmount','X_NetAmount','O_NetAmount','ALK_NetAmount']:
@@ -325,8 +317,6 @@ for col in ['Iframe_Total','N_NetAmount','X_NetAmount','O_NetAmount','ALK_NetAmo
         .astype('Int64')   
     )
 
-
-print(whole_final.info())
 
 
 whole_final['Iframe_Total'] = pd.to_numeric(whole_final['Iframe_Total'], errors='coerce').fillna(0).astype('Int64')
@@ -463,10 +453,6 @@ Nondistribute_df.CurrencyDesc= Nondistribute_df.CurrencyDesc.str.strip()
 Nondistribute_df['CurrencyCode'] = Nondistribute_df.CurrencyDesc.map(CurrencyToCode)
 
 
-
-
-
-
 ########################### Convert Currency to dollar #########################
 
 
@@ -551,8 +537,6 @@ merged_nonsys = pd.merge(nonsys , CurrencyRate_df , left_on = ['YearMonth' , 'Cu
 merged_ALK = pd.merge(ALK_df_R , CurrencyRate_df[['CurrencyParityRateDolar' ,'YearMonth', 'CurrencyID']] , left_on = ['YearMonth' , 'CurrencyCode'] , right_on = ['YearMonth' , 'CurrencyID'] , how = 'left' )
 
 
-
-
 merged_FactExcel['RealAmount_Dollar'] = merged_FactExcel['CurrencyParityRateDolar'].astype('float') * merged_FactExcel['RealAmount']
 merged_nonsys['RealAmount_Dollar_sys'] =  merged_nonsys['CurrencyParityRateDolar'].astype('float') * merged_nonsys['RealAmount']
 merged_ALK['RealAmount_Dollar_ALK'] = merged_ALK['CurrencyParityRateDolar'].astype('float') * merged_nonsys['RealAmount']
@@ -616,7 +600,6 @@ merged_All_Final['Difference'] = merged_All_Final['SumInUSD'].astype('float') - 
 ########################### Determine The threshold #########################
 
 merged_All_Final_Anomalies = merged_All_Final[merged_All_Final['Difference'] > 100] # determine threshold for anomaly detection
-
 
 ######################### Rename Columns in order to insert to table #######################
 
@@ -794,15 +777,74 @@ if today == max_date_Anomali:
     
 
 
+
+
+
+
+
+################# RunDate_query ####################
+
+execute_connection2, execute_cursor2 = user_pyodbc_connection(
+    server="172.31.50.98",
+    database_name="QlikView",
+    username=Node1va2_Username,
+    password=Node1va2_Password
+)
+
+
+
+RunDate_rows = []
+
+RunDate_query ='''select DATEDIFF(day , cast(getdate() as date), [LastRunDate]) as DiffDate , LastRunDate
+FROM [QlikView].[dbo].[ExportJobHistory]'''
+
+
+
+try:
+    execute_cursor2.execute(RunDate_query)
+    RunDate_query_rows = execute_cursor2.fetchall()
+    
+
+	
+    for row2 in RunDate_query_rows:   
+        DiffDate , LastRunDate = row2
+        RunDate_rows.append(
+            {
+                "DiffDate": DiffDate,
+                "LastRunDate": LastRunDate
+            }
+        )
+    print('Done')
+
+
+except Exception as e:
+     print("Executing RunDate query failed", e)
+
+
+RunDate_df = pd.DataFrame(RunDate_rows)
+UpdateDate = row2[0]
+
+
+
+
+
+
+
+execute_cursor2.close()
+execute_connection2.close()
+
+
+
+
 if not count.empty:
     payload = json.dumps({
         "token": "P880P2HLA6MO71PWTXTWR",
         "providerId": 6,
         "sendType": 0,
         "email": 'soleimani.yeganeh@golrang.com',
-        #"ccRecipients": ['Aghdasifam.Masoud@Golrang.com'],
+        "ccRecipients": ['Aghdasifam.Masoud@Golrang.com'],
         "subject": "Alert: KPI Values Exceeded In Export!",
-        "body": f" \n\n {count.to_html(index=False, border=1, justify='center')}",
+        "body": f" \n\n تعداد روز های آپدیت نشده= {UpdateDate}\n\n{count.to_html(index=False, border=1, justify='center')}", 
         "fileAttachmentAddress": ""
     })
     headers = {'Content-Type': 'application/json'}
@@ -814,7 +856,7 @@ else:
         "providerId": 6,
         "sendType": 0,
         "email":'soleimani.yeganeh@golrang.com',
-        #"ccRecipients": ['Aghdasifam.Masoud@Golrang.com'], #It should be in []
+        "ccRecipients": ['Aghdasifam.Masoud@Golrang.com'], #It should be in []
         "subject": "Confirmation of Descending program execution in Export!",
         "body": "انجام شد",
         "fileAttachmentAddress": ""
@@ -822,4 +864,3 @@ else:
     headers = {'Content-Type': 'application/json'}
     response = requests.post("https://Esp-api.gig.services/email/saveEmail", headers=headers, data=payload)
     print(response.status_code, response.text)
-
