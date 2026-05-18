@@ -35,6 +35,7 @@ os.chdir(r'D:\Projects\Export Dashboard')
 nonsys = pd.read_csv(r'''\\172.31.50.113\Sale & Distribution\NonSysyemiForPowerBI.txt''', sep=',')
 FactExcelAggr = pd.read_excel(r'\\172.31.50.113\Sale & Distribution\FactExcelAggr.xlsx') #FactExcelAggr + Khazane = nonsys
 
+nonsys.to_csv('nonsys.csv' , encoding = 'utf-8-sig')
 
 
 nonsys = nonsys[nonsys['TableInfo'] == 'JameMali'] #Beacuse of difference between nonsys and xlsx file
@@ -88,7 +89,7 @@ ALK_rows = []
 
 Alk_query = """
 select CompanyCode ,  round((SUM(case when InvoceType = 2 then NetAmount else 0 end) - SUM(case when InvoceType = 3 then NetAmount else 0 end))/ 1000000.0, 0) as SumQatE
-from SaleIntegratedModel..factsalealk
+from SaleIntegratedModel..factsalealk WITH (NOLOCK)
 where SaleType = 2 and left(maindate , 6) >= 140300
 group by CompanyCode"""
 
@@ -127,7 +128,8 @@ Nondistribute_rows = []
 
 NondistributeCompanies_query = """
 select CompanyCode ,  round((SUM(case when InvoceType = 2 then NetAmount else 0 end) - SUM(case when InvoceType = 3 then NetAmount else 0 end))/ 1000000.0, 0) as SumQatE
-from SaleIntegratedModel..FactSaleNonDistribut  where SaleType = 2 and left(maindate , 6) >= 140300
+from SaleIntegratedModel..FactSaleNonDistribut  WITH (NOLOCK)
+where SaleType = 2 and left(maindate , 6) >= 140300
 group by CompanyCode"""
 
 
@@ -204,7 +206,7 @@ SELECT CompanyCode, dim.Company_PName,
             ROUND((SUM(CASE WHEN Sale_State = 2 THEN ROUND(Amount_Net, 0) ELSE 0 END) -
                    SUM(CASE WHEN Sale_State = 3 THEN ROUND(Amount_Net, 0) ELSE 0 END)) / 1000000.0, 0) AS Iframe_Total
 FROM Qlikview.SSAS_Aggr.FactSaleIFrame as fact WITH (NOLOCK)
-LEFT JOIN QlikView.SSAS_Aggr.Company as dim WITH (NOLOCK) ON fact.CompanyCode = dim.[Master Code]
+LEFT JOIN QlikView.SSAS_Aggr.Company as dim WITH (NOLOCK) ON fact.CompanyCode = dim.[Master Code] 
 WHERE Flag_InOut = 2 and left(Main_Date , 6) >=140300
 GROUP BY CompanyCode, dim.Company_PName;
 """
@@ -253,8 +255,8 @@ CurrencyRatesql = '''SELECT YearMonth
       ,CurrencyParityRateDolar
 	  ,b.CurrencyID
 	  ,b.CurrencyName
-  FROM [Qlikview].[dbo].[FactCurrencyRate] a
-  inner join [Qlikview].[dbo].ExportCurrency b
+  FROM [Qlikview].[dbo].[FactCurrencyRate] a WITH (NOLOCK)
+  inner join [Qlikview].[dbo].ExportCurrency b WITH (NOLOCK)
   on a.CurrencyID = b.CurrencyID'''
 
 
@@ -355,7 +357,7 @@ SELECT
     YearMonth,
     CompanyCode,
     SUM(RealAmount) AS SumInUSD
-FROM [QlikView].[dbo].[FactExport]
+FROM [QlikView].[dbo].[FactExport] WITH (NOLOCK)
 where YearMonth > 140400
 GROUP BY 
     YearMonth, 
@@ -412,7 +414,7 @@ SELECT
     LEFT(MainDate, 6) AS YearMonth,
     CurrencyDesc,
     InvoceType
-FROM SaleIntegratedModel..FactSaleNonDistribut
+FROM SaleIntegratedModel..FactSaleNonDistribut WITH (NOLOCK)
 WHERE 
     RealAmount IS NOT NULL 
     AND MainDate > 14040000
@@ -490,7 +492,7 @@ ALK_rows_R = []
 
 Alk_query_R = """
 select left(maindate , 6) MainDate , CompanyCode , CurrencyDesc ,  round(SUM(case when InvoceType = 2 then RealAmount else 0 end) - SUM(case when InvoceType = 3 then RealAmount else 0 end) , 0) as SumQatE
-from SaleIntegratedModel..factsalealk
+from SaleIntegratedModel..factsalealk WITH (NOLOCK)
 where  left(maindate , 6) >= 140400
 group by MainDate , CompanyCode , CurrencyDesc
 """
@@ -796,7 +798,7 @@ execute_connection2, execute_cursor2 = user_pyodbc_connection(
 RunDate_rows = []
 
 RunDate_query ='''select DATEDIFF(day , cast(getdate() as date), [LastRunDate]) as DiffDate , LastRunDate
-FROM [QlikView].[dbo].[ExportJobHistory]'''
+FROM [QlikView].[dbo].[ExportJobHistory] WITH (NOLOCK)'''
 
 
 
