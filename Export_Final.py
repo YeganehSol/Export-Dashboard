@@ -3,6 +3,7 @@
 #تمامی ارزها با با هم نوع خودشون جمع میشن و مرجوعی ها از آن ها کم شده و در نهایت با هم جمع میشن و به دلار تبدیل نمیشوند!
 
 
+
 import os
 import pandas as pd
 import numpy as np
@@ -60,8 +61,8 @@ FactExcelAggr['YearMonth'] = FactExcelAggr['Main_Date'].str[:6]
 FactExcelAggr = FactExcelAggr[FactExcelAggr['Flag_InOut'] == 2]
 
 
-FactExcelAggr = FactExcelAggr[FactExcelAggr['YearMonth'] >= '140300']
-nonsys = nonsys[nonsys['YearMonth'] >= '140300']
+FactExcelAggr = FactExcelAggr[FactExcelAggr['YearMonth'] >= '140400']
+nonsys = nonsys[nonsys['YearMonth'] >= '140400']
 
 
 
@@ -78,7 +79,7 @@ execute_connection, execute_cursor = user_pyodbc_connection(server="172.31.50.98
 today_date = datetime.now()
 current_time = str(today_date.time())
 persian_today_date = return_jalali_date(today_date)[0]
-year = 1403
+year = 1404
 
 
 
@@ -90,7 +91,7 @@ ALK_rows = []
 Alk_query = """
 select CompanyCode ,  round((SUM(case when InvoceType = 2 then NetAmount else 0 end) - SUM(case when InvoceType = 3 then NetAmount else 0 end))/ 1000000.0, 0) as SumQatE
 from SaleIntegratedModel..factsalealk WITH (NOLOCK)
-where SaleType = 2 and left(maindate , 6) >= 140300
+where SaleType = 2 and left(maindate , 6) >= 140400
 group by CompanyCode"""
 
 
@@ -129,7 +130,7 @@ Nondistribute_rows = []
 NondistributeCompanies_query = """
 select CompanyCode ,  round((SUM(case when InvoceType = 2 then NetAmount else 0 end) - SUM(case when InvoceType = 3 then NetAmount else 0 end))/ 1000000.0, 0) as SumQatE
 from SaleIntegratedModel..FactSaleNonDistribut  WITH (NOLOCK)
-where SaleType = 2 and left(maindate , 6) >= 140300
+where SaleType = 2 and left(maindate , 6) >= 140400
 group by CompanyCode"""
 
 
@@ -156,12 +157,13 @@ except Exception as e:
 
 Nondistribute_df = pd.DataFrame(Nondistribute_rows)
 
-Nondistribute_df = Nondistribute_df[[ "CompanyCode", 'Nondistribute_Total']]
+Nondistribute_df = Nondistribute_df[["CompanyCode", 'Nondistribute_Total']]
+
+Nondistribute_df.to_csv('Nondistribute_dfTest22.csv' , encoding = 'utf-8-sig')
 
 
 
 #Merge All sources Data
-
 #preparing nonsys data
  
 TotalSale_Mali_and_excel_df = nonsys[['CompanyCode','NetAmount']].groupby(by = 'CompanyCode').sum().reset_index()
@@ -207,7 +209,7 @@ SELECT CompanyCode, dim.Company_PName,
                    SUM(CASE WHEN Sale_State = 3 THEN ROUND(Amount_Net, 0) ELSE 0 END)) / 1000000.0, 0) AS Iframe_Total
 FROM Qlikview.SSAS_Aggr.FactSaleIFrame as fact WITH (NOLOCK)
 LEFT JOIN QlikView.SSAS_Aggr.Company as dim WITH (NOLOCK) ON fact.CompanyCode = dim.[Master Code] 
-WHERE Flag_InOut = 2 and left(Main_Date , 6) >=140300
+WHERE Flag_InOut = 2 and left(Main_Date , 6) >=140400
 GROUP BY CompanyCode, dim.Company_PName;
 """
 
@@ -228,7 +230,6 @@ try:
             {
                 "CompanyName": CompanyName,
                 "CompanyCode": CompanyCode,
-                #"Main_Date" : Main_Date,
                 "Iframe_Total": Iframe_Total
 
             }
@@ -344,8 +345,6 @@ df_anomalies.columns = ['نام شرکت' , 'کد مستر شرکت' , 'اختل
 
 
 
-
-
 ################################## Roham's Table ####################################
 
 
@@ -406,7 +405,7 @@ NondistributeCompanies_query = """
 SELECT  
     SUM(
         CASE 
-            WHEN CurrencyDesc like N'%ريال%' THEN NetAmount
+            WHEN CurrencyDesc like N'%ريال%' or CurrencyDesc is null THEN NetAmount
             ELSE RealAmount
         END
     ) AS SumOfRealAmount,
@@ -416,7 +415,8 @@ SELECT
     InvoceType
 FROM SaleIntegratedModel..FactSaleNonDistribut WITH (NOLOCK)
 WHERE 
-    RealAmount IS NOT NULL 
+    --RealAmount IS NOT NULL 
+    saletype = 2 
     AND MainDate > 14040000
 GROUP BY 
     CompanyCode,
@@ -453,8 +453,10 @@ Nondistribute_df = Nondistribute_df[['CompanyCode','SumOfRealAmount', 'YearMonth
 
 Nondistribute_df.CurrencyDesc= Nondistribute_df.CurrencyDesc.str.strip()
 Nondistribute_df['CurrencyCode'] = Nondistribute_df.CurrencyDesc.map(CurrencyToCode)
+Nondistribute_df['CurrencyCode'].fillna('108' , inplace = True)
 
 
+Nondistribute_df.to_csv('Nondistribute_dfTest.csv' , encoding = 'utf-8-sig')
 ########################### Convert Currency to dollar #########################
 
 
@@ -463,10 +465,10 @@ mergedFactExport=pd.merge(Nondistribute_df, CurrencyRate_df[['CurrencyParityRate
 mergedFactExport.drop(['CurrencyID'] , axis = 1 , inplace = True)
 
 
-#New
-#RealAmountDollar -> SumOfRealAmount
-#mergedFactExport['RealAmountDollar'] = mergedFactExport.SumOfRealAmount.astype('float') * mergedFactExport.CurrencyParityRateDolar.astype('float')
+
 mergedFactExport.SumOfRealAmount =mergedFactExport.SumOfRealAmount.astype('int64')
+
+
 
 #SumOfRealAmount
 mergedFactExportInv = mergedFactExport.groupby(['YearMonth' ,'CompanyCode' , 'InvoceType']).sum('SumOfRealAmount').reset_index()
@@ -478,9 +480,11 @@ grouped = (
       .unstack(fill_value=0)   # ستون جدا برای 2 و 3
       .reset_index())
 
+
 grouped["RealAmount_nonDis"] = grouped.get(2, 0) - grouped.get(3, 0)
 
 
+grouped.to_csv('groupedTest.csv' , encoding = 'utf-8-sig')
 
 
 ############################### Add Alkowsar Data ############################
@@ -834,6 +838,7 @@ UpdateDate = row2[0]
 
 execute_cursor2.close()
 execute_connection2.close()
+
 
 
 
